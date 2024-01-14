@@ -1,0 +1,67 @@
+-- Осина Полина, решение финального кейса
+
+-- Создаем индексы для таблиц Prices, Securities, для того, чтобы оптимизировать работу с 
+-- данными таблицами
+CREATE INDEX date_index ON "Prices" ("symbol", "date");
+CREATE INDEX symbol_index ON "Securities" ("Ticker_symbol");
+
+-- Создаем временную таблицу c расчетом изменения цены акции за день
+CREATE TEMPORARY TABLE  tm_stock AS (
+  SELECT
+    "symbol",
+    "open",
+    "close",
+    "high",
+    "low",
+    "volume",
+    "close" - LAG("close") OVER (PARTITION BY "symbol" ORDER BY "date") AS "change"
+  FROM "Prices"
+);
+
+--Создаем CTE из данных временной таблицы с расчетом минимальной цены, максимальной, 
+-- общей суммой торгов, количества дней на рынке и среднего значения отклонения. 
+-- Отбираем данные по условиям.
+WITH "Stocks" AS (
+  SELECT
+    tm."symbol",
+    MAX(tm."high") AS "max_price",
+    MIN(tm."low") AS "min_price",
+    SUM(tm."volume") AS "total_volume",
+    COUNT(tm."close") AS "trading_days",
+    AVG(tm."change") AS "average_change"
+  FROM tm_stock tm
+  WHERE tm."symbol" IN (
+    SELECT "symbol"
+    FROM tm_stock
+    GROUP BY "symbol"
+    HAVING
+      MAX("high") > 200
+      AND MIN("low") < 30
+      AND SUM("volume") > 5000000
+      AND COUNT("close") > 504
+  )
+  GROUP BY tm."symbol"
+)
+
+-- Соединяем нашу временную таблицу с таблицей с названиями компаний, сортируем 
+-- по убыванию и выбираем первое значение.
+SELECT
+  "Securities"."Ticker_symbol",
+  "Securities"."Security",
+  "Stocks"."average_change",
+  "Stocks"."max_price",
+  "Stocks"."min_price",
+  "Stocks"."total_volume",
+  "Stocks"."trading_days"
+FROM
+  "Securities"
+INNER JOIN
+  "Stocks" ON "Stocks"."symbol" = "Securities"."Ticker_symbol"
+ORDER BY
+  "Stocks"."average_change" DESC
+LIMIT 1
+
+-- Ответ: Regeneron
+-- Комментарий: я пыталась оптимизировать запрос созданием временной таблицы (работала быстрее на 0.2сек), 
+
+
